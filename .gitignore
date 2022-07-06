@@ -1,0 +1,13 @@
+# Data file too large to be saved on github
+data
+
+# python environment
+env_pyrep
+
+
+# wierd files
+.DS_Store
+._.DS_Store
+
+.ipynb_checkpoints
+__pycache__
