@@ -6,10 +6,10 @@ from pyrep.robots.arms.panda import Panda
 from pyrep.objects.shape import Shape
 from pyrep.objects.vision_sensor import VisionSensor
 from pyrep.objects.dummy import Dummy
-from demos_engineer import collect_and_save_demos
+from demos_engineer_3stepversion import collect_and_save_demos
 
 
-DIR_PATH = dirname(abspath(__file__)) + '/../../'
+DIR_PATH = dirname(abspath(__file__)) + '/../'
 SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_bc.ttt'
 
 timestamp = datetime.now().strftime('%y_%m_%d_%_H_%M_%S')
@@ -24,7 +24,7 @@ demo_params = {
     'precision_linear': 0.005,
     'precision_angular': 0.02,
     'maintain': 10,
-    'init_config_file': DIR_PATH + 'data/scene_setups_22_07_01_13_50_02.npz',
+    'init_config_file': DIR_PATH + 'data/scene_setups_22_07_06_20_13_59.npz',
     'save_demo_location': save_location,
 }
 
@@ -37,7 +37,7 @@ scene_object_names = [
 ]
 
 env = PyRep()
-env.launch(SCENE_FILE, headless=False, responsive_ui=False)
+env.launch(SCENE_FILE, headless=True, responsive_ui=False)
 
 arm = Panda()
 ref = arm.get_object('Reference')

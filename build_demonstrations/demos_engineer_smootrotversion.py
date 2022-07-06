@@ -50,40 +50,23 @@ def demo_reach_pose(env, arm, camera, t_dummy, ref, max_steps, max_speed_pos, ma
     return image_seq, action_seq, robot_state_seq, control_inp_seq
 
 
-# def get_orientation_towards_target(tip_position, target_position):
-#     delta = target_position - tip_position
-#     dist = np.linalg.norm(delta)
-#     rot_x = - np.arccos(-delta[2]/dist)
-#     rot_y = np.pi - np.arccos(-delta[2]/dist)
-#     if delta[0] == 0:
-#         rot_z = np.sign(delta[1]) * np.pi/2
-#     elif delta[0] > 0:
-#         rot_z = np.arctan(delta[1]/delta[0])
-#     else:
-#         rot_z = np.pi + np.arctan(delta[1]/delta[0])
-#     return np.array([np.pi/2, rot_y, rot_z])
-
 
 def get_rot_towards_target(current, target, ref):
     current_pos = current.get_position(relative_to=ref)
     target_pos = target.get_position(relative_to=ref)
+    # v for vector
     v_towards_target = target_pos - current_pos
     v_towards_target /= np.linalg.norm(v_towards_target)
     v_down = np.array([0, 0, -1])
-    cross_product = np.cross(v_down, v_towards_target)
     v_halfway = v_towards_target + v_down
     v_halfway /= np.linalg.norm(v_halfway)
-    q_w = [np.dot(v_towards_target, v_halfway),]
-    quat_towards_target = np.concatenate([cross_product, q_w])
+    cross_product = np.cross(v_down, v_halfway)
+    dot_product = [np.dot(v_towards_target, v_halfway),]
+    # cross_product = qx, qy, qz; dot_product = qw
+    quat_towards_target = np.concatenate([cross_product, dot_product])
     rot_towards_target = Rotation.from_quat(quat_towards_target)
     rot_target = Rotation.from_quat(target.get_quaternion(relative_to=ref))
     rot_total = rot_towards_target * rot_target
-    print('v_towards_target', v_towards_target)
-    print('v_down', v_down)
-    print('v_halfway', v_towards_target)
-    print('cross_product', cross_product)
-    print('q_w', q_w)
-    print('rot_quat', quat_towards_target)
 
     return rot_total
 
@@ -131,21 +114,12 @@ def demo_trajectory(env, arm, camera, target_obj, target_dummy, ref, max_steps, 
 
 
 
-def reset_scene(init_obj_poses, init_robot_joints, arm, target_obj, distractors, ref):    
+def reset_scene(init_obj_poses, init_robot_joints, arm, target_obj, distractors, ref):
     all_obj = [target_obj] + distractors
     for i_obj, obj in enumerate(all_obj):
         obj.set_position(init_obj_poses[i_obj, :3], relative_to=ref)
         obj.set_orientation(init_obj_poses[i_obj, 3:], relative_to=ref)
     arm.set_joint_positions(init_robot_joints, disable_dynamics=True)
-
-
-# def create_dummy_target(target_obj, ref):
-#     target_obj_pose = target_obj.get_pose(relative_to=ref)
-#     adjustment = np.array([0, 0, 0.03, 0, 0, 0, 0])
-#     target_pose = target_obj_pose + adjustment
-#     target_dummy = Dummy.create(0.01)
-#     target_dummy.set_pose(target_pose, relative_to=ref)
-#     return target_dummy
 
     
 def collect_and_save_demos(env, arm, camera, target_obj, target_dummy, distractors, ref, n_demos, max_steps, init_config_file, save_demo_location, max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain):
