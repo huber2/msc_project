@@ -10,45 +10,110 @@ class NotReachedError(Exception):
     """When the robot fails to reach a target"""
 
 
-def demo_reach_pose(env, arm, camera, t_dummy, ref, max_steps, max_speed_pos, max_speed_angular, precision_linear, precision_angular, maintain):
+class Trajectory():
+    def __init__(self):
+        self.image_seq = []
+        self.action_seq = []
+        self.robot_state_seq = []
+        self.control_inp_seq = []
+        self.object_pos_seq = []
+
+    def add(self, image, action, robot_state, control_input, object_pose):
+        self.image_seq.append(image)
+        self.action_seq.append(action)
+        self.robot_state_seq.append(robot_state)
+        self.control_inp_seq.append(control_input)
+        self.object_pos_seq.append(object_pose)
+
+    def get_as_arrays(self):
+        all_seq = [self.image_seq, self.action_seq, self.robot_state_seq, self.control_inp_seq, self.object_pos_seq,]
+        all_seq_as_arrays = list(map(np.array, all_seq))
+        return all_seq_as_arrays
+
+
+def demo_reach_trajectory(env, arm, camera, target_obj, t_dummy, ref, max_steps, max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain):
     """Collectect demo images and actions for reaching a target dummy pose"""
-    image_seq = []
-    action_seq = []
-    robot_state_seq = []
-    control_inp_seq = []
+    traj = Trajectory()
+
     controller = Controller(env, arm, t_dummy, ref)
     step_counter = 0
     error_counter = 0
     maintain_good_pose_counter = 0
+
+    # Step 1: reach pose1 5cm above target pointing down towards the target
+    target1_position = target_obj.get_position(relative_to=ref) + np.array([0, 0, 0.05])
+    rot_towards_target = get_rot_towards_target(camera, target_obj, ref)
+    target1_pose = np.concatenate([target1_position, rot_towards_target.as_quat()])
+    t_dummy.set_pose(target1_pose, relative_to=ref)
+
     dist_pos, dist_ori = controller.get_distances()
-    while dist_pos > precision_linear or dist_ori > precision_angular or maintain_good_pose_counter < maintain:
-        # print(f"step #{step_counter}")
-        if (dist_pos < precision_linear and dist_ori < precision_angular):
-            maintain_good_pose_counter += 1
-        else:
-            maintain_good_pose_counter = 0
+
+    while dist_pos > precision_linear or dist_ori > precision_angular:
         try:
-            delta_pos, delta_quat, next_pos, next_quat = controller.get_pose_step(max_speed_pos, max_speed_angular)
+            delta_pos, delta_quat, next_pos, next_quat = controller.get_pose_step(max_speed_linear, max_speed_angular)
         except IKError as e:
             error_counter += 1
             if error_counter < 10:
                 continue
             raise e
+
+        # Capture image and do action
         img = camera.capture_rgb()
         robot_state, controls = controller.demo_step(next_pos, next_quat)
-        image_seq.append(img)
-        action_seq.append(np.concatenate([delta_pos, delta_quat]))
-        robot_state_seq.append(robot_state)
-        control_inp_seq.append(controls)
+
+        # Record the state action + other context info
+        traj.add(img, np.concatenate([delta_pos, delta_quat]), robot_state, controls, target_obj.get_pose())
+
+        # Update target orientation so that camera points towards target
+        rot_towards_target = get_rot_towards_target(camera, target_obj, ref)
+        target1_pose = np.concatenate([target1_position, rot_towards_target.as_quat()])
+        t_dummy.set_pose(target1_pose, relative_to=ref)
+
         step_counter += 1
         dist_pos, dist_ori = controller.get_distances()
+
+        if step_counter > max_steps:
+            raise NotReachedError("Max steps per trajectory")
+
         inp = input()
         if inp == 'q':
             env.shutdown()
+
+    # Step 2: reach down, so that target lies between the 2 fingers of gripper
+    target_pose3 = target_obj.get_pose(relative_to=ref)
+    t_dummy.set_pose(target_pose3, relative_to=ref)
+
+    while dist_pos > precision_linear or dist_ori > precision_angular or maintain_good_pose_counter < maintain:
+        if dist_pos < precision_linear and dist_ori < precision_angular:
+            maintain_good_pose_counter += 1
+        else:
+            maintain_good_pose_counter = 0
+        try:
+            delta_pos, delta_quat, next_pos, next_quat = controller.get_pose_step(max_speed_linear, max_speed_angular)
+        except IKError as e:
+            error_counter += 1
+            if error_counter < 10:
+                continue
+            raise e
+
+        # Capture image and do action
+        img = camera.capture_rgb()
+        robot_state, controls = controller.demo_step(next_pos, next_quat)
+
+        # Record the state action + other context info
+        traj.add(img, np.concatenate([delta_pos, delta_quat]), robot_state, controls, target_obj.get_pose())
+
+        step_counter += 1
+        dist_pos, dist_ori = controller.get_distances()
+
         if step_counter > max_steps:
             raise NotReachedError("Max steps per trajectory")
-    return image_seq, action_seq, robot_state_seq, control_inp_seq
 
+        inp = input()
+        if inp == 'q':
+            env.shutdown()
+
+    return traj.get_as_arrays()
 
 
 def get_rot_towards_target(current, target, ref):
@@ -69,49 +134,6 @@ def get_rot_towards_target(current, target, ref):
     rot_total = rot_towards_target * rot_target
 
     return rot_total
-
-def demo_trajectory(env, arm, camera, target_obj, target_dummy, ref, max_steps,  max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain):
-    """Collect one full demonstration trajectory"""
-    image_seq = []
-    action_seq = []
-    robot_state_seq = []
-    control_inp_seq = []
-    
-    # Compute the rotation such that the camera points its z axis towards the object
-    rot_towards_target = get_rot_towards_target(camera, target_obj, ref)
-
-    # First part is to make the tip point towards target and go towards the target in a straight line
-    target1_position = target_obj.get_position(relative_to=ref) + np.array([0, 0, 0.03])
-    target1_pose = np.concatenate([target1_position, rot_towards_target.as_quat()])
-    target_dummy.set_pose(target1_pose, relative_to=ref)
-
-    imgs1, acts1, states1, controls1 = demo_reach_pose(env, arm, camera, target_dummy, ref, max_steps, max_speed_linear, max_speed_angular, precision_linear, precision_angular, 0)
-    image_seq += imgs1
-    action_seq += acts1
-    robot_state_seq += states1
-    control_inp_seq += controls1
-    
-    #Then, once the target is reached, orient the gripper correctly
-    target_quat = target_obj.get_quaternion(relative_to=ref)
-    target_pose2 = np.concatenate([target1_position, target_quat])
-    target_dummy.set_pose(target_pose2, relative_to=ref)
-    imgs2, acts2, states2, controls2 = demo_reach_pose(env, arm, camera, target_dummy, ref, max_steps, max_speed_linear, max_speed_angular, precision_linear, precision_angular, 0)
-    image_seq += imgs2
-    action_seq += acts2
-    robot_state_seq += states2
-    control_inp_seq += controls2
-
-    #Finally, move down towards the object
-    target_pose3 = target_obj.get_pose(relative_to=ref)
-    target_dummy.set_pose(target_pose3, relative_to=ref)
-    imgs2, acts2, states2, controls2 = demo_reach_pose(env, arm, camera, target_dummy, ref, max_steps, max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain)
-    image_seq += imgs2
-    action_seq += acts2
-    robot_state_seq += states2
-    control_inp_seq += controls2
-    
-    return np.array(image_seq), np.array(action_seq), np.array(robot_state_seq), np.array(control_inp_seq)
-
 
 
 def reset_scene(init_obj_poses, init_robot_joints, arm, target_obj, distractors, ref):
@@ -139,6 +161,7 @@ def collect_and_save_demos(env, arm, camera, target_obj, target_dummy, distracto
             'demo_action_sequences':[],
             'demo_robot_state_sequences': [],
             'demo_control_input_sequences': [],
+            'demo_target_poses_sequences': [],
             'init_obj_poses': [],
             'init_robot_joints': [],}
 
@@ -152,7 +175,7 @@ def collect_and_save_demos(env, arm, camera, target_obj, target_dummy, distracto
         # target_dummy = create_dummy_target(target_obj, ref)
 
         try:
-            demo_traj_seq = demo_trajectory(env, arm, camera, target_obj, target_dummy, ref, max_steps, max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain)
+            demo_traj_seq = demo_reach_trajectory(env, arm, camera, target_obj, target_dummy, ref, max_steps, max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain)
         except (NotReachedError, IKError) as e:
             warnings.warn(str(e), Warning)
             continue
@@ -164,6 +187,7 @@ def collect_and_save_demos(env, arm, camera, target_obj, target_dummy, distracto
         data['demo_action_sequences'].append(demo_traj_seq[1])
         data['demo_robot_state_sequences'].append(demo_traj_seq[2])
         data['demo_control_input_sequences'].append(demo_traj_seq[3])
+        data['demo_target_poses_sequences'].append(demo_traj_seq[4])
         data['init_obj_poses'].append(obj_poses)
         data['init_robot_joints'].append(robot_joints)
 
