@@ -6,7 +6,7 @@ from pyrep.robots.arms.panda import Panda
 from pyrep.objects.shape import Shape
 from pyrep.objects.vision_sensor import VisionSensor
 from pyrep.objects.dummy import Dummy
-from demos_engineer_3stepversion import collect_and_save_demos
+from demos_engineer_smootrotversion import collect_and_save_demos
 
 
 DIR_PATH = dirname(abspath(__file__)) + '/../'
@@ -17,7 +17,7 @@ save_location = DIR_PATH + 'data/demo_reach_object_' + timestamp
 
 
 demo_params = {
-    'n_demos': 3000,
+    'n_demos': 5,
     'max_steps': 500,
     'max_speed_linear': 0.1,
     'max_speed_angular': 0.5,
@@ -37,7 +37,7 @@ scene_object_names = [
 ]
 
 env = PyRep()
-env.launch(SCENE_FILE, headless=True, responsive_ui=False)
+env.launch(SCENE_FILE, headless=False, responsive_ui=False)
 
 arm = Panda()
 ref = arm.get_object('Reference')

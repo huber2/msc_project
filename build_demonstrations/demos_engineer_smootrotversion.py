@@ -31,6 +31,26 @@ class Trajectory():
         return all_seq_as_arrays
 
 
+def get_rot_towards_target(current, target, ref):
+    current_pos = current.get_position(relative_to=ref)
+    target_pos = target.get_position(relative_to=ref)
+    # v for vector
+    v_towards_target = target_pos - current_pos
+    v_towards_target /= np.linalg.norm(v_towards_target)
+    v_down = np.array([0, 0, -1])
+    v_halfway = v_towards_target + v_down
+    v_halfway /= np.linalg.norm(v_halfway)
+    cross_product = np.cross(v_down, v_halfway)
+    dot_product = [np.dot(v_towards_target, v_halfway),]
+    # cross_product = qx, qy, qz; dot_product = qw
+    quat_towards_target = np.concatenate([cross_product, dot_product])
+    rot_towards_target = Rotation.from_quat(quat_towards_target)
+    rot_target = Rotation.from_quat(target.get_quaternion(relative_to=ref))
+    rot_total = rot_towards_target * rot_target
+
+    return rot_total
+
+
 def demo_reach_trajectory(env, arm, camera, target_obj, t_dummy, ref, max_steps, max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain):
     """Collectect demo images and actions for reaching a target dummy pose"""
     traj = Trajectory()
@@ -42,7 +62,7 @@ def demo_reach_trajectory(env, arm, camera, target_obj, t_dummy, ref, max_steps,
 
     # Step 1: reach pose1 5cm above target pointing down towards the target
     target1_position = target_obj.get_position(relative_to=ref) + np.array([0, 0, 0.05])
-    rot_towards_target = get_rot_towards_target(camera, target_obj, ref)
+    rot_towards_target = get_rot_towards_target(arm.get_tip(), target_obj, ref)
     target1_pose = np.concatenate([target1_position, rot_towards_target.as_quat()])
     t_dummy.set_pose(target1_pose, relative_to=ref)
 
@@ -65,7 +85,7 @@ def demo_reach_trajectory(env, arm, camera, target_obj, t_dummy, ref, max_steps,
         traj.add(img, np.concatenate([delta_pos, delta_quat]), robot_state, controls, target_obj.get_pose())
 
         # Update target orientation so that camera points towards target
-        rot_towards_target = get_rot_towards_target(camera, target_obj, ref)
+        rot_towards_target = get_rot_towards_target(arm.get_tip(), target_obj, ref)
         target1_pose = np.concatenate([target1_position, rot_towards_target.as_quat()])
         t_dummy.set_pose(target1_pose, relative_to=ref)
 
@@ -116,26 +136,6 @@ def demo_reach_trajectory(env, arm, camera, target_obj, t_dummy, ref, max_steps,
     return traj.get_as_arrays()
 
 
-def get_rot_towards_target(current, target, ref):
-    current_pos = current.get_position(relative_to=ref)
-    target_pos = target.get_position(relative_to=ref)
-    # v for vector
-    v_towards_target = target_pos - current_pos
-    v_towards_target /= np.linalg.norm(v_towards_target)
-    v_down = np.array([0, 0, -1])
-    v_halfway = v_towards_target + v_down
-    v_halfway /= np.linalg.norm(v_halfway)
-    cross_product = np.cross(v_down, v_halfway)
-    dot_product = [np.dot(v_towards_target, v_halfway),]
-    # cross_product = qx, qy, qz; dot_product = qw
-    quat_towards_target = np.concatenate([cross_product, dot_product])
-    rot_towards_target = Rotation.from_quat(quat_towards_target)
-    rot_target = Rotation.from_quat(target.get_quaternion(relative_to=ref))
-    rot_total = rot_towards_target * rot_target
-
-    return rot_total
-
-
 def reset_scene(init_obj_poses, init_robot_joints, arm, target_obj, distractors, ref):
     all_obj = [target_obj] + distractors
     for i_obj, obj in enumerate(all_obj):
@@ -179,10 +179,7 @@ def collect_and_save_demos(env, arm, camera, target_obj, target_dummy, distracto
         except (NotReachedError, IKError) as e:
             warnings.warn(str(e), Warning)
             continue
-        finally:
-            
-            pass
-
+        env.stop()
         data['demo_image_sequences'].append(demo_traj_seq[0])
         data['demo_action_sequences'].append(demo_traj_seq[1])
         data['demo_robot_state_sequences'].append(demo_traj_seq[2])
@@ -192,13 +189,13 @@ def collect_and_save_demos(env, arm, camera, target_obj, target_dummy, distracto
         data['init_robot_joints'].append(robot_joints)
 
         counter_demo_done += 1
-        print(f"{counter_demo_done}/{n_demos} demos collected")
+        print(f"Demos collected {counter_demo_done}/{n_demos}")
         if counter_demo_done == n_demos:
             break
 
         if counter_demo_done%100 == 0:
             np.savez_compressed(save_demo_location, **data)
             print(f'Collected and saved {counter_demo_done} demos!')
-
+    env.shutdown()
     np.savez_compressed(save_demo_location, **data)
     print(f"Total: {counter_demo_done} demos successfully collected!")

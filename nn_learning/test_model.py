@@ -46,13 +46,13 @@ def reset_scene(init_obj, init_robot, all_objects, arm, ref):
 
     
 def normalize_input(x):
-    return 5 * x - 1
+    return x
 
-def denormalize_output(x):
-    return x * np.array([.025, .025, .025, .05, .05, .05, 1]).reshape(1, -1)
+def denormalize_output(x, mean, std):
+    return x * std + mean
     
 
-def test_model(model, env, camera, objects, arm, ref, init_config_loader):
+def test_model(model, env, camera, objects, arm, ref, init_config_loader, mean, std):
     arm.set_control_loop_enabled(False)
     for demo, (init_obj, init_robot) in enumerate(init_config_loader):
         print(f"Demo {demo}")
@@ -62,7 +62,7 @@ def test_model(model, env, camera, objects, arm, ref, init_config_loader):
             print(f"step #{step}")
             img_inp = torch.tensor(normalize_input(camera.capture_rgb()), dtype=torch.float32)[None].permute(0, 3, 1, 2)
             with torch.no_grad():
-                act_outp = denormalize_output(model.forward(img_inp).detach().numpy()).flatten()
+                act_outp = denormalize_output(model.forward(img_inp).detach().numpy().flatten(), mean, std)
             do_action(arm, act_outp, ref)
             x = input()
             if x=='b':
@@ -72,16 +72,21 @@ def test_model(model, env, camera, objects, arm, ref, init_config_loader):
         env.stop()
 
 
-DIR_PATH = dirname(abspath(__file__)) + '/../../'
+DIR_PATH = dirname(abspath(__file__)) + '/../'
 SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_bc.ttt'
 
 model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=False, num_classes=7)
-model.load_state_dict(torch.load(DIR_PATH + 'data/model_resnet18_5epochs.pth'))
+model.load_state_dict(torch.load(DIR_PATH + 'data/model_resnet18_20epochs_new_dataset7jul.pth'))
 model.eval()
 
-init_config_file = DIR_PATH + 'data/scene_setups_22_06_22_16_45_43.npz'
-init_config = np.load(init_config_file, allow_pickle=True)
-init_config_loader = zip(init_config['obj_poses'], init_config['joint_angles'])
+demo_data_pth = DIR_PATH + 'data/demo_reach_object_22_07_07_10_51_44.npz'
+demo_data = np.load(demo_data_pth, allow_pickle=True)
+init_config_loader = zip(demo_data['init_obj_poses'][:35], demo_data['init_robot_joints'][:35])
+
+mean = np.array([ 1.43829243e-04, -1.25095708e-04, -3.39056340e-03, -9.48246625e-05,
+         2.33874860e-04, -3.67510995e-04, -9.99957146e-01])
+std = np.array([1.30591054e-03, 2.48425228e-03, 1.60129421e-03, 4.28247242e-03,
+        4.15962985e-03, 7.06149528e-03, 3.72335535e-05])
 
 env = PyRep()
 env.launch(SCENE_FILE, headless=False, responsive_ui=True)
@@ -92,7 +97,7 @@ object_names = ['blue_target', 'red_cube', 'red_cube_big', 'lime_cylinder', 'ora
 
 objects = [Shape(obj) for obj in object_names]
 
-test_model(model, env, camera, objects, arm, ref, init_config_loader)
+test_model(model, env, camera, objects, arm, ref, init_config_loader, mean, std)
 
 env.shutdown()
 
