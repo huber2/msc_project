@@ -17,14 +17,14 @@ save_location = DIR_PATH + 'data/demo_reach_object_' + timestamp
 
 
 demo_params = {
-    'n_demos': 5,
-    'max_steps': 500,
-    'max_speed_linear': 0.1,
+    'n_demos': 1,
+    'max_steps': 1000,
+    'max_speed_linear': 0.05,
     'max_speed_angular': 0.5,
     'precision_linear': 0.005,
     'precision_angular': 0.02,
-    'maintain': 10,
-    'init_config_file': DIR_PATH + 'data/scene_setups_22_07_06_20_13_59.npz',
+    'maintain': 20,
+    'init_config_file': DIR_PATH + 'data/scene_setups_22_07_08_13_31_46.npz',
     'save_demo_location': save_location,
 }
 
@@ -45,7 +45,6 @@ camera = VisionSensor('Panda_camera')
 objects = [Shape(obj) for obj in scene_object_names]
 target_object = objects[0]
 distractors = objects[1:]
-# a dummy point placed 3 cm above target object
 target_dummy = Dummy('target_dummy')
 
 collect_and_save_demos(env, arm, camera, target_object, target_dummy, distractors, ref, **demo_params)

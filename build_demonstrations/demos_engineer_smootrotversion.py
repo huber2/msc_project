@@ -82,7 +82,7 @@ def demo_reach_trajectory(env, arm, camera, target_obj, t_dummy, ref, max_steps,
         robot_state, controls = controller.demo_step(next_pos, next_quat)
 
         # Record the state action + other context info
-        traj.add(img, np.concatenate([delta_pos, delta_quat]), robot_state, controls, target_obj.get_pose())
+        traj.add(img, np.concatenate([delta_pos, delta_quat]), robot_state, controls, target_obj.get_pose(relative_to=arm.get_tip()))
 
         # Update target orientation so that camera points towards target
         rot_towards_target = get_rot_towards_target(arm.get_tip(), target_obj, ref)
@@ -121,7 +121,7 @@ def demo_reach_trajectory(env, arm, camera, target_obj, t_dummy, ref, max_steps,
         robot_state, controls = controller.demo_step(next_pos, next_quat)
 
         # Record the state action + other context info
-        traj.add(img, np.concatenate([delta_pos, delta_quat]), robot_state, controls, target_obj.get_pose())
+        traj.add(img, np.concatenate([delta_pos, delta_quat]), robot_state, controls, target_obj.get_pose(relative_to=arm.get_tip()))
 
         step_counter += 1
         dist_pos, dist_ori = controller.get_distances()
@@ -143,6 +143,17 @@ def reset_scene(init_obj_poses, init_robot_joints, arm, target_obj, distractors,
         obj.set_orientation(init_obj_poses[i_obj, 3:], relative_to=ref)
     arm.set_joint_positions(init_robot_joints, disable_dynamics=True)
 
+
+def save(data_dict, location):
+    print("Compressing and saving to", location)
+    for key, value in data_dict.items():
+        if key[:4] == 'demo':
+            data_dict[key] = np.concatenate(value)
+        else:
+            data_dict[key] = np.array(value)
+    np.savez_compressed(location, **data_dict)
+
+
     
 def collect_and_save_demos(env, arm, camera, target_obj, target_dummy, distractors, ref, n_demos, max_steps, init_config_file, save_demo_location, max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain):
     """collect a set of demonstration trajectories"""
@@ -163,13 +174,13 @@ def collect_and_save_demos(env, arm, camera, target_obj, target_dummy, distracto
             'demo_control_input_sequences': [],
             'demo_target_poses_sequences': [],
             'init_obj_poses': [],
-            'init_robot_joints': [],}
+            'init_robot_joints': [],
+            'n_steps_per_traj': [],}
 
     for itr, (obj_poses, robot_joints) in enumerate(zip(init_obj_poses, init_robot_joints)):
         env.stop()
         env.start()
         print(f"Demo setup: {itr+1}/{max_demos}")
-        print('...env started')
         reset_scene(obj_poses, robot_joints, arm, target_obj, distractors, ref)
         # print("scene resetted")
         # target_dummy = create_dummy_target(target_obj, ref)
@@ -187,15 +198,16 @@ def collect_and_save_demos(env, arm, camera, target_obj, target_dummy, distracto
         data['demo_target_poses_sequences'].append(demo_traj_seq[4])
         data['init_obj_poses'].append(obj_poses)
         data['init_robot_joints'].append(robot_joints)
+        data['n_steps_per_traj'].append(len(demo_traj_seq[1]))
 
         counter_demo_done += 1
         print(f"Demos collected {counter_demo_done}/{n_demos}")
         if counter_demo_done == n_demos:
             break
 
-        if counter_demo_done%100 == 0:
-            np.savez_compressed(save_demo_location, **data)
-            print(f'Collected and saved {counter_demo_done} demos!')
+        # if counter_demo_done%100 == 0:
+        #     save(data, save_demo_location)
+        #     print(f'Collected and saved {counter_demo_done} demos!')
     env.shutdown()
-    np.savez_compressed(save_demo_location, **data)
+    save(data, save_demo_location)
     print(f"Total: {counter_demo_done} demos successfully collected!")
