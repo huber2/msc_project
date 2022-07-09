@@ -3,24 +3,24 @@ from scipy.spatial.transform import Rotation
 from scipy.spatial.transform import Slerp
 
 class Controller:
-    def __init__(self, env, arm, t_dummy, reference_frame):
+    def __init__(self, env, arm, target_dummy, reference_dummy):
         self.env = env
         self.arm = arm
-        self.t_dummy = t_dummy
-        self.ref = reference_frame
+        self.tgt = target_dummy
+        self.ref = reference_dummy
         
     def get_pose_step(self, max_speed_linear, max_speed_angular):
         
         # Position error
         tip_pos = np.array(self.arm.get_tip().get_position(relative_to=self.ref))
-        target_pos = np.array(self.t_dummy.get_position(relative_to=self.ref))
+        target_pos = np.array(self.tgt.get_position(relative_to=self.ref))
         diff_pos = target_pos - tip_pos
         dist_pos = np.linalg.norm(diff_pos)
         
 
         # Orientation error
         tip_quat = self.arm.get_tip().get_quaternion(relative_to=self.ref)
-        target_quat = self.t_dummy.get_quaternion(relative_to=self.ref)
+        target_quat = self.tgt.get_quaternion(relative_to=self.ref)
         
         tip_rot = Rotation.from_quat(tip_quat)
         target_rot = Rotation.from_quat(target_quat)
@@ -64,14 +64,14 @@ class Controller:
     def get_distances(self):
         # Position error
         tip_pos = np.array(self.arm.get_tip().get_position(relative_to=self.ref))
-        target_pos = np.array(self.t_dummy.get_position(relative_to=self.ref))
+        target_pos = np.array(self.tgt.get_position(relative_to=self.ref))
         diff_pos = target_pos - tip_pos
         dist_pos = np.linalg.norm(diff_pos)
         
 
         # Orientation error
         tip_quat = self.arm.get_tip().get_quaternion(relative_to=self.ref)
-        target_quat = self.t_dummy.get_quaternion(relative_to=self.ref)
+        target_quat = self.tgt.get_quaternion(relative_to=self.ref)
         tip_rot = Rotation.from_quat(tip_quat)
         target_rot = Rotation.from_quat(target_quat)
         diff_rot = target_rot * tip_rot.inv()
@@ -84,14 +84,14 @@ class Controller:
         
         # Position error
         tip_pos = np.array(self.arm.get_tip().get_position(relative_to=self.ref))
-        target_pos = np.array(self.t_dummy.get_position(relative_to=self.ref))
+        target_pos = np.array(self.tgt.get_position(relative_to=self.ref))
         diff_pos = target_pos - tip_pos
         dist_pos = np.linalg.norm(diff_pos)
         
 
         # Orientation error
         tip_quat = self.arm.get_tip().get_quaternion(relative_to=self.ref)
-        target_quat = self.t_dummy.get_quaternion(relative_to=self.ref)
+        target_quat = self.tgt.get_quaternion(relative_to=self.ref)
         
         tip_rot = Rotation.from_quat(tip_quat)
         target_rot = Rotation.from_quat(target_quat)
@@ -137,14 +137,14 @@ class Controller:
         
         # Position error
         tip_pos = np.array(self.arm.get_tip().get_position(relative_to=self.ref))
-        target_pos = np.array(self.t_dummy.get_position(relative_to=self.ref))
+        target_pos = np.array(self.tgt.get_position(relative_to=self.ref))
         diff_pos = target_pos - tip_pos
         dist_pos = np.linalg.norm(diff_pos)
         
 
         # Orientation error
         tip_quat = self.arm.get_tip().get_quaternion(relative_to=self.ref)
-        target_quat = self.t_dummy.get_quaternion(relative_to=self.ref)
+        target_quat = self.tgt.get_quaternion(relative_to=self.ref)
         
         tip_rot = Rotation.from_quat(tip_quat)
         target_rot = Rotation.from_quat(target_quat)
