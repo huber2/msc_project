@@ -50,7 +50,6 @@ def demo_reach_pose(env, arm, camera, t_dummy, ref, max_steps, max_speed_pos, ma
     return image_seq, action_seq, robot_state_seq, control_inp_seq
 
 
-
 def get_rot_towards_target(current, target, ref):
     current_pos = current.get_position(relative_to=ref)
     target_pos = target.get_position(relative_to=ref)

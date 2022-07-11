@@ -1,8 +1,7 @@
 import numpy as np
 import warnings
 from pyrep.errors import IKError
-from pyrep.objects.dummy import Dummy
-from demos_control import Controller
+from demos_control_new import Controller
 from scipy.spatial.transform import Rotation
 
 
@@ -10,49 +9,62 @@ class NotReachedError(Exception):
     """When the robot fails to reach a target"""
 
 
-class Trajectory():
+class Trajectory:
     def __init__(self):
         self.image_seq = []
         self.action_seq = []
         self.robot_state_seq = []
         self.control_inp_seq = []
-        self.object_pos_seq = []
+        self.target_pose_seq = []
 
     def __len__(self):
-        return len(action_seq)
+        return len(self.action_seq)
 
-    def add(self, image, action, robot_state, control_input, object_pose):
+    def add(self, image, action, robot_state, control_input, target_pose):
         self.image_seq.append(image)
         self.action_seq.append(action)
         self.robot_state_seq.append(robot_state)
         self.control_inp_seq.append(control_input)
-        self.object_pos_seq.append(object_pose)
+        self.target_pose_seq.append(target_pose)
 
-    def get_as_arrays(self):
-        all_seq = [self.image_seq, self.action_seq, self.robot_state_seq, self.control_inp_seq, self.object_pos_seq,]
-        all_seq_as_arrays = list(map(np.array, all_seq))
-        return all_seq_as_arrays
+    def get_as_dict_of_arrays(self):
+        as_dict_of_arrays = {k: np.array(v) for (k, v) in self.__dict__.items()}
+        return as_dict_of_arrays
 
-class Demonstartions():
+
+class Demonstrations:
     def __init__(self):
-        self.trajectories = []
-        self.demo_image_sequences = []
-        self.demo_action_sequences = []
-        self.demo_robot_state_sequences = []
-        self.demo_control_input_sequences = []
-        self.demo_target_poses_sequences = []
-        self.init_obj_poses = []
-        self.init_robot_joints = []
-        self.n_steps_per_traj = []
+        self.traj_data_naming = {
+            'demo_image_sequences': 'image_seq',
+            'demo_action_sequences': 'action_seq',
+            'demo_robot_state_sequences': 'robot_state_seq',
+            'demo_control_input_sequences': 'control_inp_seq',
+            'demo_target_poses_sequences': 'target_pose_seq',
+        }
+        self.count_steps = 0
+        self.data = {'total_steps': [],
+                     'init_obj_poses': [],
+                     'init_robot_joints': [],}
+        for key in self.traj_data_naming:
+            self.data[key] = []
 
-    def add_seq(self, trajectory):
-        n_steps = len(trajectory)
-        self.trajectories.append(trajectory)
+    def add_trajectory(self, trajectory, init_obj_poses, init_robot_joints):
+        self.count_steps += len(trajectory)
+        self.data['total_steps'].append(self.count_steps)
+        self.data['init_obj_poses'].append(init_obj_poses)
+        self.data['init_robot_joints'].append(init_robot_joints)
+        traj = trajectory.get_as_dict_of_arrays()
+        for (key, value) in self.traj_data_naming.items():
+            self.data[key].append(traj[value])
+
+    def get_as_dict_arrays(self):
+        dict_of_arrays = {k: np.concatenate(self.data[k]) for k in self.traj_data_naming}
+        for k in ['total_steps', 'init_obj_poses', 'init_robot_joints']:
+            dict_of_arrays[k] = np.array(self.data[k])
+        return dict_of_arrays
 
     def save(self, location):
-        demo_arrays = self.get_as_dict_of_arrays()
-        np.savez(location, **demo_arrays)
-
+        np.savez(location, **self.get_as_dict_arrays())
 
 
 def get_rot_towards_target(current, target, ref):
@@ -76,7 +88,7 @@ def get_rot_towards_target(current, target, ref):
 
 
 def demo_reach_trajectory(env, arm, camera, target_obj, t_dummy, ref, max_steps, max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain):
-    """Collectect demo images and actions for reaching a target dummy pose"""
+    """Collect demo images and actions for reaching a target dummy pose"""
     traj = Trajectory()
 
     controller = Controller(env, arm, t_dummy, ref)
@@ -90,23 +102,25 @@ def demo_reach_trajectory(env, arm, camera, target_obj, t_dummy, ref, max_steps,
     target1_pose = np.concatenate([target1_position, rot_towards_target.as_quat()])
     t_dummy.set_pose(target1_pose, relative_to=ref)
 
-    dist_pos, dist_ori = controller.get_distances()
+    dist_pos, dist_ori = controller.get_distance_linear(), controller.get_distance_angular()
 
     while dist_pos > precision_linear or dist_ori > precision_angular:
+        # Capture image and do action
+        img = camera.capture_rgb()
         try:
-            delta_pos, delta_quat, next_pos, next_quat = controller.get_pose_step(max_speed_linear, max_speed_angular)
+            v_linear, v_angular = controller.step_with_velocities(max_speed_linear, max_speed_angular)
         except IKError as e:
             error_counter += 1
             if error_counter < 10:
                 continue
             raise e
 
-        # Capture image and do action
-        img = camera.capture_rgb()
-        robot_state, controls = controller.demo_step(next_pos, next_quat)
-
         # Record the state action + other context info
-        traj.add(img, np.concatenate([delta_pos, delta_quat]), robot_state, controls, target_obj.get_pose(relative_to=arm.get_tip()))
+        act = np.concatenate([v_linear, v_angular])
+        robot_state = arm.get_joint_positions()
+        controls = arm.get_joint_target_velocities()
+        target_pose = target_obj.get_pose(retative_to= arm.get_tip())
+        traj.add(img, act, robot_state, controls, target_pose)
 
         # Update target orientation so that camera points towards target
         rot_towards_target = get_rot_towards_target(arm.get_tip(), target_obj, ref)
@@ -132,23 +146,26 @@ def demo_reach_trajectory(env, arm, camera, target_obj, t_dummy, ref, max_steps,
             maintain_good_pose_counter += 1
         else:
             maintain_good_pose_counter = 0
+
+        # Capture image and do action
+        img = camera.capture_rgb()
         try:
-            delta_pos, delta_quat, next_pos, next_quat = controller.get_pose_step(max_speed_linear, max_speed_angular)
+            v_linear, v_angular = controller.step_with_velocities(
+                max_speed_linear, max_speed_angular)
         except IKError as e:
             error_counter += 1
             if error_counter < 10:
                 continue
             raise e
 
-        # Capture image and do action
-        img = camera.capture_rgb()
-        robot_state, controls = controller.demo_step(next_pos, next_quat)
-
         # Record the state action + other context info
-        traj.add(img, np.concatenate([delta_pos, delta_quat]), robot_state, controls, target_obj.get_pose(relative_to=arm.get_tip()))
-
+        act = np.concatenate([v_linear, v_angular])
+        robot_state = arm.get_joint_positions()
+        controls = arm.get_joint_target_velocities()
+        target_pose = target_obj.get_pose(retative_to=arm.get_tip())
+        traj.add(img, act, robot_state, controls, target_pose)
         step_counter += 1
-        dist_pos, dist_ori = controller.get_distances()
+        dist_pos, dist_ori = controller.get_distance_linear(), controller.get_distance_angular()
 
         if step_counter > max_steps:
             raise NotReachedError("Max steps per trajectory")
@@ -157,7 +174,7 @@ def demo_reach_trajectory(env, arm, camera, target_obj, t_dummy, ref, max_steps,
         if inp == 'q':
             env.shutdown()
 
-    return traj.get_as_arrays()
+    return traj
 
 
 def reset_scene(init_obj_poses, init_robot_joints, arm, target_obj, distractors, ref):
@@ -168,22 +185,11 @@ def reset_scene(init_obj_poses, init_robot_joints, arm, target_obj, distractors,
     arm.set_joint_positions(init_robot_joints, disable_dynamics=True)
 
 
-def save(data_dict, location):
-    print("Compressing and saving to", location)
-    for key, value in data_dict.items():
-        if key[:4] == 'demo':
-            data_dict[key] = np.concatenate(value)
-        else:
-            data_dict[key] = np.array(value)
-    np.savez_compressed(location, **data_dict)
-
-
-    
 def collect_and_save_demos(env, arm, camera, target_obj, target_dummy, distractors, ref, n_demos, max_steps, init_config_file, save_demo_location, max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain):
     """collect a set of demonstration trajectories"""
     arm.set_control_loop_enabled(False)
     
-    init_config = np.load(init_config_file, allow_pickle=True)
+    init_config = np.load(init_config_file)
     init_obj_poses = init_config['obj_poses']
     init_robot_joints = init_config['joint_angles']
     max_demos = len(init_robot_joints)
@@ -192,46 +198,29 @@ def collect_and_save_demos(env, arm, camera, target_obj, target_dummy, distracto
     
     counter_demo_done = 0
     
-    data = {'demo_image_sequences': [],
-            'demo_action_sequences':[],
-            'demo_robot_state_sequences': [],
-            'demo_control_input_sequences': [],
-            'demo_target_poses_sequences': [],
-            'init_obj_poses': [],
-            'init_robot_joints': [],
-            'n_steps_per_traj': [],}
+    demos = Demonstrations()
 
     for itr, (obj_poses, robot_joints) in enumerate(zip(init_obj_poses, init_robot_joints)):
         env.stop()
         env.start()
         print(f"Demo setup: {itr+1}/{max_demos}")
         reset_scene(obj_poses, robot_joints, arm, target_obj, distractors, ref)
-        # print("scene resetted")
-        # target_dummy = create_dummy_target(target_obj, ref)
 
         try:
-            demo_traj_seq = demo_reach_trajectory(env, arm, camera, target_obj, target_dummy, ref, max_steps, max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain)
+            traj = demo_reach_trajectory(env, arm, camera, target_obj, target_dummy, ref, max_steps, max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain)
         except (NotReachedError, IKError) as e:
             warnings.warn(str(e), Warning)
             continue
         env.stop()
-        data['demo_image_sequences'].append(demo_traj_seq[0])
-        data['demo_action_sequences'].append(demo_traj_seq[1])
-        data['demo_robot_state_sequences'].append(demo_traj_seq[2])
-        data['demo_control_input_sequences'].append(demo_traj_seq[3])
-        data['demo_target_poses_sequences'].append(demo_traj_seq[4])
-        data['init_obj_poses'].append(obj_poses)
-        data['init_robot_joints'].append(robot_joints)
-        data['n_steps_per_traj'].append(len(demo_traj_seq[1]))
-
+        demos.add_trajectory(traj, obj_poses, robot_joints)
         counter_demo_done += 1
         print(f"Demos collected {counter_demo_done}/{n_demos}")
         if counter_demo_done == n_demos:
             break
 
-        # if counter_demo_done%100 == 0:
-        #     save(data, save_demo_location)
-        #     print(f'Collected and saved {counter_demo_done} demos!')
+        if counter_demo_done%100 == 0:
+            demos.save(save_demo_location)
+            print(f'Collected and saved {counter_demo_done} demos!')
     env.shutdown()
-    save(data, save_demo_location)
+    demos.save(save_demo_location)
     print(f"Total: {counter_demo_done} demos successfully collected!")
