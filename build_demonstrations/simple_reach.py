@@ -88,7 +88,16 @@ class Controller:
         return delta_pos
 
 
-def demo_reach_trajectory(env, arm, camera, target_obj, t_dummy, ref, max_steps, max_speed_linear, precision_linear, maintain):
+def get_random_initial_poses(n_demos):
+    obj_bounding_box = [0.35, -0.4, 0.03, 0.85, 0.4, 0.03]
+    obj_bounding_euler_angles = np.array([180, 0, -180, 180, 0, 180]) * np.pi/180
+    obj_min = np.concatenate([obj_bounding_box[:3], obj_bounding_euler_angles[:3]]).reshape(1, 6)
+    obj_max = np.concatenate([obj_bounding_box[3:], obj_bounding_euler_angles[3:]]).reshape(1, 6)
+    obj_init_poses = np.random.uniform(obj_min, obj_max, (n_demos, 6))
+    return obj_init_poses
+
+
+def demo_reach_trajectory(env, arm, camera, target_obj, t_dummy, ref, max_steps, max_speed_linear, precision_linear, maintain, headless):
     """Collect demo images and actions for reaching a target dummy pose"""
     traj = Trajectory()
 
@@ -132,33 +141,31 @@ def demo_reach_trajectory(env, arm, camera, target_obj, t_dummy, ref, max_steps,
             raise NotReachedError("Max steps per trajectory")
 
         print('step', step_counter, end=' ')
-        inp = input()
-        if inp == 'q':
-            env.shutdown()
+        if not headless:
+            inp = input()
+            if inp == 'q':
+                env.shutdown()
 
     return traj
 
 
-def collect_and_save_demos(env, arm, camera, target_obj, target_dummy, ref, n_demos, max_steps, save_demo_location, max_speed_linear, precision_linear, maintain):
+def collect_and_save_demos(env, arm, camera, target_obj, target_dummy, ref, n_demos, max_steps, save_demo_location, max_speed_linear, precision_linear, maintain, headless):
     """collect a set of demonstration trajectories"""
     arm.set_control_loop_enabled(False)
     counter_demo_done = 0
     demos = Demonstrations()
 
-    init_pos = target_obj.get_position(relative_to=ref)
-    pos0 = np.array([init_pos[0], 0.25, init_pos[2]])
-    pos1 = np.array([init_pos[0], -0.25, init_pos[2]])
+    init_pos = get_random_initial_poses(n_demos)
 
     for itr in range(n_demos):
-        if itr == 0:
-            target_obj.set_position(pos0, relative_to=ref)
-        if itr == 1:
-            target_obj.set_position(pos1, relative_to=ref)
         env.stop()
         env.start()
+        target_obj.set_position(init_pos[itr, :3], relative_to=ref)
+        target_obj.set_orientation(init_pos[itr, 3:], relative_to=ref)
+        env.step()
         print(f"Demo setup: {itr+1}/{n_demos}")
         try:
-            traj = demo_reach_trajectory(env, arm, camera, target_obj, target_dummy, ref, max_steps, max_speed_linear, precision_linear, maintain)
+            traj = demo_reach_trajectory(env, arm, camera, target_obj, target_dummy, ref, max_steps, max_speed_linear, precision_linear, maintain, headless)
         except (NotReachedError, IKError) as e:
             warnings.warn('10X '+str(e), Warning)
             continue
