@@ -10,14 +10,14 @@ from simple_reach import collect_and_save_demos
 
 
 DIR_PATH = dirname(abspath(__file__)) + '/../'
-SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_simple.ttt'
+SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_red_cuboid.ttt'
 
 timestamp = datetime.now().strftime('%y_%m_%d_%_H_%M_%S')
 save_location = DIR_PATH + 'data/demo_reach_object_' + timestamp
 
 
 demo_params = {
-    'n_demos': 250,
+    'n_demos': 10,
     'max_steps': 1000,
     'max_speed_linear': 0.1,
     'precision_linear': 0.005,

@@ -1,13 +1,15 @@
 # Data file too large to be saved on github
 data
 
-# python environment
+# python venv
 env_pyrep
 
+# Jupyter notebook
+.ipynb_checkpoints
 
-# wierd files
+# Byte-compiled
+__pycache__
+
+# macOS store attributes
 .DS_Store
 ._.DS_Store
-
-.ipynb_checkpoints
-__pycache__
