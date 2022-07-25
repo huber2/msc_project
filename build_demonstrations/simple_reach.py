@@ -17,7 +17,8 @@ class Trajectory:
         return len(self.action_seq)
 
     def add(self, image, action):
-        self.image_seq.append(image)
+        image_8bit = np.array(image * 255, dtype=np.uint8)
+        self.image_seq.append(image_8bit)
         self.action_seq.append(action)
 
 

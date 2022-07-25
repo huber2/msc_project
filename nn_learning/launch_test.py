@@ -12,13 +12,14 @@ from mlp import MLP
 
 
 DIR_PATH = dirname(abspath(__file__)) + '/../'
-SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_bc.ttt'
+SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_big_distractors.ttt'
+model_path = DIR_PATH + 'data/model_conv_simple_100ep_50_16x16_mask5x5_v_xyz.pth'
 
 model = ConvNet(n_classes=3)
-model.load_state_dict(torch.load(DIR_PATH + 'data/model_conv_simple_general_no_distractors_100ep.pth'))
+model.load_state_dict(torch.load(model_path))
 #model = MLP(layers_dim=(16*16*3, 64, 3))
 #model.load_state_dict(torch.load(DIR_PATH + 'data/model_mlp_simple_2sides.pth'))
-print('model_conv_simple_2sides.pth')
+print(model_path)
 print('MODEL INFO:', model, sep='\n')
 model.eval()
 
@@ -31,9 +32,9 @@ def format_input(x):
 
 
 def format_output(x):
-    return x.detach().numpy().flatten() / 1000
+    return x.detach().numpy().flatten() / 200
 
-max_steps = 150
+max_steps = 200
 
 env = PyRep()
 env.launch(SCENE_FILE, headless=False, responsive_ui=True)
