@@ -7,7 +7,8 @@ from pyrep.objects.shape import Shape
 from pyrep.objects.dummy import Dummy
 from pyrep.objects.vision_sensor import VisionSensor
 from simple_test import test_model
-from model_simple_conv import ConvNet
+#from model_simple_conv import ConvNet
+from model_very_simple_conv import ConvNet
 from mlp import MLP
 from pyrep.errors import IKError
 import warnings
@@ -15,7 +16,7 @@ import warnings
 
 DIR_PATH = dirname(abspath(__file__)) + '/../'
 SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_distractors_same_shape_similar_colors.ttt'
-model_path = DIR_PATH + 'data/model_conv_simple_100ep_50_16x16_multicolor_mask5x5_v_xyz.pth'
+model_path = DIR_PATH + 'data/model_UNDERFIT_conv_very_simple_50ep__16x16_multicolor_mask5x5_v_xyz.pth'
 n_tests = 100
 max_steps = 300
 distance_tolerance = 0.03
