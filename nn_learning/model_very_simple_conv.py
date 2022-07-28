@@ -16,11 +16,11 @@ class ConvNet(nn.Module):
 
             nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=4, stride=1, padding=0),
+            nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
         )
 
         self.fc = nn.Sequential(
-            nn.Linear(64, 16),
+            nn.Linear(256, 16),
             nn.ReLU(inplace=True),
             nn.Linear(16, n_classes),
         )  
