@@ -9,15 +9,11 @@ from pyrep.objects.shape import Shape
 from pyrep.objects.dummy import Dummy
 from pyrep.objects.vision_sensor import VisionSensor
 from simple_test import test_model
-<<<<<<< HEAD
 #from model_simple_conv import ConvNet
 from model_very_simple_conv import ConvNet
 from mlp import MLP
 from pyrep.errors import IKError
 import warnings
-=======
-from model_simple_conv import ConvNet
->>>>>>> c914ef6802d83e119a8f54226d6b61ba3a341e9f
 
 
 DIR_PATH = dirname(abspath(__file__)) + '/../'
