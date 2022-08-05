@@ -16,8 +16,8 @@ save_location = DIR_PATH + 'data/demo_reach_object_' + timestamp
 
 
 demo_params = {
-    'n_demos': 600,
-    'max_steps': 1000,
+    'n_demos': 1500,
+    'max_steps': 500,
     'max_speed_linear': 0.1,
     'max_speed_angular': 0.2,
     'precision_linear': 0.005,
@@ -35,7 +35,7 @@ arm = Panda()
 ref = arm.get_object('Reference')
 camera = VisionSensor('Panda_camera')
 target_object = Shape('blue_target')
-target_object.set_color([0.1, 0.1, 0.9])
+target_object.set_color([0, 0, 0])
 target_dummy = Dummy('target_dummy')
 
 collect_and_save_demos(env, arm, camera, target_object, target_dummy, ref, **demo_params)

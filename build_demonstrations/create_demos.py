@@ -101,7 +101,7 @@ def demo_reach_trajectory(env, arm, camera, tgt_obj, tgt_dummy, ref, max_steps, 
     """Collect demo images and actions for reaching a target dummy pose.
     The target dummy pose is set 5cm above the target object with the same orientation as the robot's end effector.
     The robot end effector has to reach the target dummy and stay within a close range during several time steps
-    in order to complete the demonstartion sucessfully."""
+    in order to complete the demonstartion sucessfully. See collect_and_save_demos() for info of args"""
     traj = Trajectory()
 
     controller = Controller(env, arm, tgt_dummy, ref)
@@ -158,7 +158,7 @@ def get_random_tgt_pose(bounding_box, bounding_angles):
     return pose
 
 
-def collect_and_save_demos(env, arm, camera, tgt_obj, tgt_dummy, ref, tgt_bounding_box, tgt_bounding_angles, n_demos, max_steps, max_speed_linear, precision_linear, maintain, headless, save_demo_location):
+def collect_and_save_demos(env, arm, camera, tgt_obj, tgt_dummy, ref, tgt_bounding_box, tgt_bounding_angles, n_demos, max_steps, max_speed_linear, precision_linear, maintain, seed, headless, save_location):
     """Collect and save a set of demonstration trajectories in numpy npz format
 
     Args:
@@ -176,10 +176,12 @@ def collect_and_save_demos(env, arm, camera, tgt_obj, tgt_dummy, ref, tgt_boundi
         max_speed_linear (float): maximum movement speed (m/s) of the robot's end effector
         precision_linear (float): distance from the target dummy defining the target zone
         maintain (int): number of time steps the end effector has to stay in the target zone
+        seed (int): random seed for reproducibility of the target poses
         headless (bool): run simulation without Coppelia display. If False press enter at each time step
-        save_demo_location (str): path to save the npz file with the demos data
+        save_location (str): path to save the npz file with the demos data
 
     """
+    np.random.seed(seed)
     arm.set_control_loop_enabled(False)
     counter_demo_done = 0
     counter_tries = 0
@@ -203,9 +205,9 @@ def collect_and_save_demos(env, arm, camera, tgt_obj, tgt_dummy, ref, tgt_boundi
         counter_demo_done += 1
         print(f"Demos collected {counter_demo_done}/{n_demos}")
         if counter_demo_done%100 == 0:
-            demos.save(save_demo_location)
-            print(f'Collected and saved {counter_demo_done} demos!')
+            demos.save(save_location)
+            print(f'Collected and saved {counter_demo_done} demos at {save_location}!')
     env.shutdown()
-    demos.save(save_demo_location)
-    print(f"Total: {counter_demo_done} demos successfully collected!")
+    demos.save(save_location)
+    print(f"Total: {counter_demo_done} demos successfully collected at {save_location}!")
 
