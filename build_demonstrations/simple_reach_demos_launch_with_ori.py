@@ -35,7 +35,7 @@ arm = Panda()
 ref = arm.get_object('Reference')
 camera = VisionSensor('Panda_camera')
 target_object = Shape('blue_target')
-target_object.set_color([0, 0, 0])
+target_object.set_color([0, 0, 1])
 target_dummy = Dummy('target_dummy')
 
 collect_and_save_demos(env, arm, camera, target_object, target_dummy, ref, **demo_params)

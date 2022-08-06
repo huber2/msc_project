@@ -23,7 +23,7 @@ timestamp = datetime.now().strftime('%y_%m_%d_%_H_%M_%S')
 save_location = DIR_PATH + 'data/demo_reach_white32x32'
 
 demo_params = {
-    'n_demos': 3,
+    'n_demos': 250,
     'tgt_bounding_box': np.array([0.35, -0.4, 0.03, 0.85, 0.4, 0.03]),
     'tgt_bounding_angles': np.array([180, 0, -180, 180, 0, 180]) * np.pi/180,
     'max_steps': 500,
@@ -31,7 +31,7 @@ demo_params = {
     'precision_linear': 0.005,
     'maintain': 30,
     'seed': 123,
-    'headless': False,
+    'headless': True,
 }
 
 colors = (

@@ -164,6 +164,7 @@ def collect_and_save_demos(env, arm, camera, tgt_obj, tgt_dummy, ref, tgt_boundi
     Args:
         env: pyrep environment
         arm: pyrep robotic arm
+        camera: pyrep visual sensor for capturing rgb images
         tgt_obj: pyrep target object/shape
         tgt_dummy: pyrep dummy for the target pose
         ref: pyrep dummy for the reference frame
@@ -195,6 +196,7 @@ def collect_and_save_demos(env, arm, camera, tgt_obj, tgt_dummy, ref, tgt_boundi
         env.start()
         tgt_obj.set_position(tgt_pose[:3], relative_to=ref)
         tgt_obj.set_orientation(tgt_pose[3:], relative_to=ref)
+        env.step() # images are caputred at the end of the last step() call
         try:
             traj = demo_reach_trajectory(env, arm, camera, tgt_obj, tgt_dummy, ref, max_steps, max_speed_linear, precision_linear, maintain, headless)
         except (NotReachedError, IKError) as e:

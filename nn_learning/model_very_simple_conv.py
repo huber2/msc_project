@@ -6,19 +6,23 @@ class ConvNet(nn.Module):
         super().__init__()
 
         self.features = nn.Sequential(
+            # 16x16 --> 16x16 --> 8x8
             nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
 
+            # 8x8 --> 8x8 --> 4x4
             nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
 
+            # 4x4 --> 4x4 --> 2x2
             nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=2, stride=2, padding=0),
         )
 
+        # 2x2x64 --concat--> 256 --> 16 --> n_classes (3 or 6)
         self.fc = nn.Sequential(
             nn.Linear(256, 16),
             nn.ReLU(inplace=True),
