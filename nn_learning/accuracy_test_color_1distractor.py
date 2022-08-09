@@ -12,22 +12,8 @@ from model_very_simple_conv_32 import ConvNet
 from pyrep.errors import IKError
 import warnings
 
-
 DIR_PATH = dirname(abspath(__file__)) + '/../'
-SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_blue_cuboid_32camera.ttt'
-model_path = DIR_PATH + 'data/nn32_FF0000_no_aug_model.pth'
-n_tests = 100
-max_steps = 300
-distance_tolerance = 0.05
-maintain_target_duration = 10
-target_color = [1, 0, 0]
-random_seed = 123
-
-model = ConvNet(n_classes=3)
-model.load_state_dict(torch.load(model_path))
-print('MODEL PATH', model_path)
-print('MODEL INFO:', model, sep='\n')
-model.eval()
+SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_2cuboids_32camera.ttt'
 
 
 def format_input(x):
@@ -127,6 +113,21 @@ def get_test_acc(n_tests, model, env, camera, arm, objects, target_dummy, ref, m
 
 
 def main():
+    
+    model_path = DIR_PATH + 'data/nn32_FF0000_no_aug_model.pth'
+    n_tests = 100
+    max_steps = 300
+    distance_tolerance = 0.05
+    maintain_target_duration = 10
+    target_color = [1, 0, 0]
+    random_seed = 123
+
+    model = ConvNet(n_classes=3)
+    model.load_state_dict(torch.load(model_path))
+    print('MODEL PATH', model_path)
+    print('MODEL INFO:', model, sep='\n')
+    model.eval()
+    
     np.random.seed(123)
     env = PyRep()
     env.launch(SCENE_FILE, headless=False, responsive_ui=False)
