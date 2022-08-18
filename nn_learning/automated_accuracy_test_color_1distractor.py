@@ -13,8 +13,9 @@ from model_very_simple_conv_32 import ConvNet
 from pyrep.errors import IKError
 import warnings
 
+
 DIR_PATH = dirname(abspath(__file__)) + '/../'
-SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_2cuboids_32camera.ttt'
+TEST_FILE = DIR_PATH + 'data/test_parameters.json'
 
 
 def format_input(x):
@@ -23,6 +24,7 @@ def format_input(x):
 
 def format_output(x):
     return x.detach().numpy().flatten() / 10
+
 
 def set_controls(env, arm, action, ref, counter_error, init_quat):
     current_pos = arm.get_tip().get_position(relative_to=ref)
@@ -43,7 +45,6 @@ def set_controls(env, arm, action, ref, counter_error, init_quat):
 
 def reached_condition(arm, target_dummy, distance_tolerance):
     return arm.get_tip().check_distance(target_dummy) < distance_tolerance
-
 
 
 def test_model(model, env, camera, arm, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration, objects):
@@ -81,7 +82,7 @@ def test_model(model, env, camera, arm, target_dummy, ref, max_steps, distance_t
     return False
 
 
-def get_test_acc(n_tests, model, env, camera, arm, objects, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration):
+def get_test_acc(model, env, camera, arm, objects, target_dummy, ref, n_tests, max_steps, distance_tolerance, maintain_target_duration):
     obj_bounding_box = np.array([0.55, -0.25, 0.8, 0.8, 0.25, 0.8])
     obj_bounding_euler_angles = np.array([180, 0, 90, 180, 0, 270]) * np.pi/180
     obj_min = np.concatenate([obj_bounding_box[:3], obj_bounding_euler_angles[:3]]).reshape(1, 6)
@@ -112,61 +113,75 @@ def get_test_acc(n_tests, model, env, camera, arm, objects, target_dummy, ref, m
 
     return counter_reached / n_tests
 
+
 def format_color(color256):
     """Convert from [0-255] format to [0-1] format"""
     return [c/255 for c in color256]
 
 
+def print_all_test_info(task_args):
+    print("Running tests...")
+    print(f"A tests passes if the robot tip reaches the target position witin {task_args['distance_tolerance']}m \
+            and stays there for {task_args['maintain_target_duration']} time steps.")
+    print(f"Otherwise, if this is not the case after {task_args['max_steps']} time steps, the test fails.")
+    print(f"The overall accuracy is computed over {task_args['n_tests']} tests")
+
+
 def main():
-    model_name = "nn32_00FF00_no_aug_model"
-    model_path = DIR_PATH + "data/" + model_name + ".pth"
-    n_tests = 100
-    max_steps = 300
-    distance_tolerance = 0.05
-    maintain_target_duration = 10
-    target_color = [0, 255, 0]
-    distractor_colors = [[0, 0, 0], [255, 255, 255], [255, 255, 0], [0, 255, 255], [0, 128, 0], [0, 192, 0], [0, 230, 0], [0, 255, 0], [128, 255, 128], [26, 256, 26]]
-    random_seed = 123
+    with open(TEST_FILE, 'r') as f:
+        params = json.load(f)
 
-    model = ConvNet(n_classes=3)
-    model.load_state_dict(torch.load(model_path))
-    print('MODEL PATH', model_path)
-    print('MODEL INFO:', model, sep='\n')
-    model.eval()
+    task_args = params["task_args"]
+    print_all_test_info(task_args)
+
+    for color_hex, colors8bit in params["colors_tested"].items():
+        for model_suff in params["models_suffix"]:
+            model_name = f"nn32_{color_hex}{model_suff}"
+            model_path = DIR_PATH + "data/" + model_name + ".pth"
+            model = ConvNet(n_classes=3)
+            model.load_state_dict(torch.load(model_path))
+            print('MODEL PATH', model_path)
+            print('MODEL INFO:', model, sep='\n')
+            model.eval()
     
-    env = PyRep()
-    env.launch(SCENE_FILE, headless=True, responsive_ui=False)
-    arm = Panda()
-    ref = arm.get_object('Reference')
-    camera = VisionSensor('Panda_camera')
-    target_dummy = Dummy('target_dummy')
-    object_names = ['cuboid0', 'cuboid1']
-    objects = [Shape(obj) for obj in object_names]
-    info = {
-        "target_color": target_color,
-        "distractor_colors": distractor_colors,
-        "acc_list": [],
-    }
+            scene_path = DIR_PATH + "coppelia_scenes/" + params["scene_file"]
+            env = PyRep()
+            env.launch(scene_path, headless=True, responsive_ui=False)
+            arm = Panda()
+            ref = arm.get_object('Reference')
+            camera = VisionSensor('Panda_camera')
+            target_dummy = Dummy('target_dummy')
+            objects = [Shape(obj) for obj in params["object_names"]]
 
-    print('Generating initial random object poses...')
-    #init_configs = get_scene_random_initial_positions(n_tests, len(objects))
-    print('Running tests...')
-    print(f'A tests passes if the robot tip reaches the target position witin {distance_tolerance}m and stays there for {maintain_target_duration} time steps.')
-    print(f'Otherwise, if this is not the case after {max_steps} time steps, the test fails.')
+            output_info = {
+                "scene_file"
+                "model": model_name,
+                "target_color": colors8bit['target_color'],
+                "distractor_colors": colors8bit["distractor_colors"],
+                "acc_list": [],
+            }
 
-    for distractor_color in distractor_colors:
-        np.random.seed(random_seed)
-        env.stop()
-        objects[0].set_color(format_color(target_color))
-        objects[1].set_color(format_color(distractor_color))
-        acc = get_test_acc(n_tests, model, env, camera, arm, objects, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration)
-        info["acc_list"].append(acc)
-        print(f'All test done for distractor color:{distractor_color}! Final accuracy:', acc)
-        print(info)
-    env.shutdown()
+            for distractor_color in colors8bit["distractor_colors"]:
 
-    with open(f"{DIR_PATH}data/test_{model_name}.json", 'w') as f:
-        json.dump(info, f)
+                print("Starting new test" + "="*50)
+                print(f"Target color: {colors8bit['target_color']}")
+                print(f"Distractor color: {distractor_color}")
+
+                np.random.seed(params["random_seed"])
+                env.stop()
+                objects[0].set_color(format_color(colors8bit["target_color"]))
+                objects[1].set_color(format_color(distractor_color))
+                acc = get_test_acc(model, env, camera, arm, objects, target_dummy, ref, **task_args)
+                output_info["acc_list"].append(acc)
+
+                print(f'All test done:{distractor_color}! Final accuracy:', acc)
+                print(output_info["acc_list"])
+
+            env.shutdown()
+
+            with open(f"{DIR_PATH}data/test_{model_name}.json", 'w') as f:
+                json.dump(output_info, f)
+
 
 if __name__ == "__main__":
     main()
