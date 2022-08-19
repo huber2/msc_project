@@ -1,7 +1,6 @@
 import numpy as np
 import warnings
 from pyrep.errors import IKError
-from demos_control_new import Controller
 from scipy.spatial.transform import Rotation
 from scipy.spatial.transform import Slerp
 
@@ -117,7 +116,7 @@ class Controller:
         self.arm.set_joint_target_velocities(v_joints)
         self.env.step()
         v_linear = delta_pos / self.env.get_simulation_timestep()
-        v_angular = delta_rot.as_euler('xyz', degrees=False)
+        v_angular = delta_rot.as_euler('xyz', degrees=False) / self.env.get_simulation_timestep()
         return np.concatenate([v_linear, v_angular])
 
 

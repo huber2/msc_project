@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial.transform import Rotation, Slerp
 import warnings
 from pyrep.errors import IKError
 
@@ -8,7 +9,7 @@ class NotReachedError(Exception):
 
 
 class Trajectory:
-    """Store sequence of images (observations) and actions"""
+    """Store sequence of images (observations) and actions."""
     def __init__(self):
         self.image_seq = []
         self.action_seq = []
@@ -63,8 +64,18 @@ class Controller:
         self.ref = reference_dummy
          
     def get_distance(self):
-        """Distance (in m) between the robot's end effector and the target"""
+        """Distance (in m) between the robot's tip and the target"""
         return self.arm.get_tip().check_distance(self.tgt)
+
+    def angular_error(self):
+        """Angle (in rad) of the shortest arc between orientations of the tip and the target"""
+        tgt_quat = self.tgt.get_quaternion(relative_to=self.ref)
+        tip_quat = self.arm.get_tip().get_quaternion(relative_to=self.ref)
+        tip_rot = Rotation.from_quat(tip_quat)
+        tgt_rot = Rotation.from_quat(tgt_quat)
+        diff_rot = tgt_rot * tip_rot.inv()
+        dist_angle = diff_rot.magnitude()
+        return dist_angle
     
     def get_tip_linear_displacement(self, max_speed_linear):
         """Linear dispacement to find next position towards target"""
@@ -78,6 +89,24 @@ class Controller:
         next_pos = tip_pos + delta_pos
         return delta_pos, next_pos
 
+    def get_tip_angular_displacement(self, max_speed_angular):
+        """Angular dispacement with Serp to find next orientation towards target"""
+        tgt_quat = self.tgt.get_quaternion(relative_to=self.ref)
+        tip_quat = self.arm.get_tip().get_quaternion(relative_to=self.ref)
+        tip_rot = Rotation.from_quat(tip_quat)
+        tgt_rot = Rotation.from_quat(tgt_quat)
+        diff_rot = tgt_rot * tip_rot.inv()
+        dist_angle = diff_rot.magnitude()
+        whole_step_speed_angular = dist_angle / self.env.get_simulation_timestep()
+        coef_step_angular = min(1, max_speed_angular/whole_step_speed_angular)
+        key_rotations = Rotation.concatenate([tip_rot, tgt_rot])
+        key_times = [0, 1]
+        slerp = Slerp(key_times, key_rotations)
+        next_rot = slerp(coef_step_angular)
+        next_quat = next_rot.as_quat()
+        delta_rot = next_rot * tip_rot.inv()
+        return delta_rot, next_quat
+
     def get_joint_velocities_with_ik_solver(self, next_tip_pos, next_tip_quat):
         """Compute robot joint velocities with inverse kinematics using the Jacobian method in CoppeliaSim"""
         next_joint_angles = self.arm.solve_ik_via_jacobian(next_tip_pos, quaternion=next_tip_quat, relative_to=self.ref)
@@ -85,18 +114,19 @@ class Controller:
         v_joints = (next_joint_angles - current_joint_angles) / self.env.get_simulation_timestep()
         return v_joints
     
-    def step_linear_velocity(self, max_speed_linear):
+    def step_linear_velocity(self, max_speed_linear, max_speed_angular):
         """Step towards target and return the corresponding linear velocity"""
         delta_pos, next_pos = self.get_tip_linear_displacement(max_speed_linear)
-        next_quat = self.tgt.get_quaternion(relative_to=self.ref)
+        delta_rot, next_quat = self.get_tip_angular_displacement(max_speed_angular)
         v_joints = self.get_joint_velocities_with_ik_solver(next_pos, next_quat)
         self.arm.set_joint_target_velocities(v_joints)
         self.env.step()
         v_linear = delta_pos / self.env.get_simulation_timestep()
-        return v_linear
+        v_angular = delta_rot.as_euler('xyz', degrees=False) / self.env.get_simulation_timestep()
+        return np.concatenate([v_linear, v_angular])
 
 
-def demo_reach_trajectory(env, arm, camera, tgt_obj, tgt_dummy, ref, max_steps, max_speed_linear, precision_linear, maintain, headless):
+def demo_reach_trajectory(env, arm, camera, tgt_obj, tgt_dummy, ref, max_steps, max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain, headless):
     """Collect demo images and actions for reaching a target dummy pose.
     The target dummy pose is set 5cm above the target object with the same orientation as the robot's end effector.
     The robot end effector has to reach the target dummy and stay within a close range during several time steps
@@ -110,13 +140,14 @@ def demo_reach_trajectory(env, arm, camera, tgt_obj, tgt_dummy, ref, max_steps, 
 
     # Reach dummy pose 5cm above target object
     target1_position = np.array(tgt_obj.get_position(relative_to=ref)) + np.array([0, 0, 0.05])
-    target1_quat = np.array(arm.get_tip().get_quaternion(relative_to=ref))
+    target1_quat = np.array(tgt_obj.get_quaternion(relative_to=ref))
     target1_pose = np.concatenate([target1_position, target1_quat])
     tgt_dummy.set_pose(target1_pose, relative_to=ref)
 
     dist_pos = controller.get_distance()
+    dist_ori = controller.angular_error()
 
-    while dist_pos > precision_linear or maintain_good_pose_counter < maintain:
+    while dist_pos > precision_linear or dist_ori > precision_angular or maintain_good_pose_counter < maintain:
         step_counter += 1
         if step_counter > max_steps:
             raise NotReachedError("Max steps per trajectory")
@@ -128,7 +159,7 @@ def demo_reach_trajectory(env, arm, camera, tgt_obj, tgt_dummy, ref, max_steps, 
         # Capture image and do action
         img = camera.capture_rgb()
         try:
-            v_linear = controller.step_linear_velocity(max_speed_linear)
+            v_linear = controller.step_linear_velocity(max_speed_linear, max_speed_angular)
         except IKError as e:
             warnings.warn(str(e), Warning)
             error_counter += 1
@@ -140,6 +171,7 @@ def demo_reach_trajectory(env, arm, camera, tgt_obj, tgt_dummy, ref, max_steps, 
         # Record the state and action
         traj.add(img, v_linear)
         dist_pos = controller.get_distance()
+        dist_ori = controller.angular_error()
 
         if not headless:
             # Wait for human to play next action
@@ -157,7 +189,7 @@ def get_random_tgt_pose(bounding_box, bounding_angles):
     return pose
 
 
-def collect_and_save_demos(env, arm, camera, tgt_obj, tgt_dummy, ref, tgt_bounding_box, tgt_bounding_angles, n_demos, max_steps, max_speed_linear, precision_linear, maintain, seed, headless, save_location):
+def collect_and_save_demos(env, arm, camera, tgt_obj, tgt_dummy, ref, tgt_bounding_box, tgt_bounding_angles, n_demos, max_steps, max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain, seed, headless, save_location):
     """Collect and save a set of demonstration trajectories in numpy npz format
 
     Args:
@@ -174,7 +206,9 @@ def collect_and_save_demos(env, arm, camera, tgt_obj, tgt_dummy, ref, tgt_boundi
         n_demos (int): number of demonstration to collect
         max_steps (int): maximum number of time steps per demonstration
         max_speed_linear (float): maximum movement speed (m/s) of the robot's end effector
+        max_spee_angular (float): maximum rotation speed (rad/s) of the robot's end effector
         precision_linear (float): distance from the target dummy defining the target zone
+        precision_angular (float): angle error from the target dummy defining the target zone
         maintain (int): number of time steps the end effector has to stay in the target zone
         seed (int): random seed for reproducibility of the target poses
         headless (bool): run simulation without Coppelia display. If False press enter at each time step
@@ -197,7 +231,7 @@ def collect_and_save_demos(env, arm, camera, tgt_obj, tgt_dummy, ref, tgt_boundi
         tgt_obj.set_orientation(tgt_pose[3:], relative_to=ref)
         env.step() # images are caputred at the end of the last step() call
         try:
-            traj = demo_reach_trajectory(env, arm, camera, tgt_obj, tgt_dummy, ref, max_steps, max_speed_linear, precision_linear, maintain, headless)
+            traj = demo_reach_trajectory(env, arm, camera, tgt_obj, tgt_dummy, ref, max_steps, max_speed_linear, max_speed_angular, precision_linear, precision_angular, maintain, headless)
         except (NotReachedError, IKError) as e:
             warnings.warn(str(e), Warning)
             continue

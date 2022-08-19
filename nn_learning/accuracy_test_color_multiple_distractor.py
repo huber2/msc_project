@@ -14,7 +14,7 @@ from pyrep.errors import IKError
 import warnings
 
 DIR_PATH = dirname(abspath(__file__)) + '/../'
-SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_2cuboids_32camera.ttt'
+SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_distractors_same_shape_many_colors_32.ttt'
 
 
 def format_input(x):
@@ -81,7 +81,8 @@ def test_model(model, env, camera, arm, target_dummy, ref, max_steps, distance_t
     return False
 
 
-def get_test_acc(n_tests, model, env, camera, arm, objects, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration):
+def multiple_tests(n_tests, model, env, camera, arm, objects, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration):
+    is_reached_list = []
     obj_bounding_box = np.array([0.55, -0.25, 0.8, 0.8, 0.25, 0.8])
     obj_bounding_euler_angles = np.array([180, 0, 90, 180, 0, 270]) * np.pi/180
     obj_min = np.concatenate([obj_bounding_box[:3], obj_bounding_euler_angles[:3]]).reshape(1, 6)
@@ -106,11 +107,10 @@ def get_test_acc(n_tests, model, env, camera, arm, objects, target_dummy, ref, m
         env.start()
         is_reached = test_model(model, env, camera, arm, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration, objects)
         env.stop()
-        if is_reached:
-            counter_reached +=1
-        print(f'Test {i+1}/{n_tests} ; Total reached: {counter_reached}/{i+1} ; running accuracy {counter_reached/(i+1)}')
+        is_reached_list.append(is_reached)
+        print(f'Test {i+1}/{n_tests} ; Total reached: {sum(is_reached_list)}/{len(is_reached_list)} ; running accuracy {sum(is_reached_list)/len(is_reached_list)}')
 
-    return counter_reached / n_tests
+    return is_reached_list
 
 def format_color(color256):
     """Convert from [0-255] format to [0-1] format"""
@@ -118,25 +118,19 @@ def format_color(color256):
 
 
 def main():
-    model_name = "nn32_FF0000_aug_model"
+    model_name = "nn32_0000FF_aug_model"
     model_path = DIR_PATH + "data/" + model_name + ".pth"
-    n_tests = 2
+    n_tests = 5
     max_steps = 300
     distance_tolerance = 0.05
     maintain_target_duration = 10
-    target_color = [255, 0, 0]
-    distractor_colors = [
-                [0, 0, 0], 
-                [255, 255, 255], 
-                [255, 255, 0], 
-                [255, 0, 255], 
-                [128, 0, 0], 
-                [192, 0, 0], 
-                [230, 0, 0], 
-                [255, 0, 0], 
-                [255, 128, 128], 
-                [256, 26, 26]
-                ]
+
+    a = np.array([0,0,1])
+    b = np.array([1,1,0])
+    range_col = np.round(np.arange(0.1, 1.01, 0.1) * 255)
+    aa = range_col.reshape((-1, 1)) * a.reshape((1, -1))
+    bb = range_col.reshape((-1, 1)) * b.reshape((1, -1)) + a*255
+    target_colors = np.array(np.concatenate([aa, bb])[:-1], dtype=np.uint8)
     random_seed = 456
 
     model = ConvNet(n_classes=3)
@@ -146,18 +140,23 @@ def main():
     model.eval()
     
     env = PyRep()
-    env.launch(SCENE_FILE, headless=False, responsive_ui=False)
+    env.launch(SCENE_FILE, headless=True, responsive_ui=False)
     arm = Panda()
     ref = arm.get_object('Reference')
     camera = VisionSensor('Panda_camera')
     target_dummy = Dummy('target_dummy')
-    object_names = ['cuboid0', 'cuboid1']
+    object_names = [
+        'blue_cuboid', 
+        'red_cuboid', 
+        'green_cuboid', 
+        'white_cuboid', 
+        'black_cuboid',
+        'yellow_cuboid',
+        'purple_cuboid',
+        'turquoise_cuboid',
+        ]
     objects = [Shape(obj) for obj in object_names]
-    info = {
-        "target_color": target_color,
-        "distractor_colors": distractor_colors,
-        "acc_list": [],
-    }
+    sucess_results = []
 
     print('Generating initial random object poses...')
     #init_configs = get_scene_random_initial_positions(n_tests, len(objects))
@@ -165,19 +164,22 @@ def main():
     print(f'A tests passes if the robot tip reaches the target position witin {distance_tolerance}m and stays there for {maintain_target_duration} time steps.')
     print(f'Otherwise, if this is not the case after {max_steps} time steps, the test fails.')
 
-    for distractor_color in distractor_colors:
+    for target_color in target_colors:
         np.random.seed(random_seed)
         env.stop()
         objects[0].set_color(format_color(target_color))
-        objects[1].set_color(format_color(distractor_color))
-        acc = get_test_acc(n_tests, model, env, camera, arm, objects, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration)
-        info["acc_list"].append(acc)
-        print(f'All test done for distractor color:{distractor_color}! Final accuracy:', acc)
-        print(info)
+        is_reached_list = multiple_tests(n_tests, model, env, camera, arm, objects, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration)
+        sucess_results.append(is_reached_list)
+        print(f'All test done! Final accuracy:')
+        print(sum(is_reached_list)/len(is_reached_list))
     env.shutdown()
 
-    with open(f"{DIR_PATH}data/test_{model_name}.json", 'w') as f:
-        json.dump(info, f)
+    sucess_results = np.array(sucess_results)
+    results = {
+        "target_colors": target_colors,
+        "sucess_results": sucess_results,
+    }
+    np.savez_compressed(f"{DIR_PATH}data/test_many_distractors_{model_name}", **results)
 
 if __name__ == "__main__":
     main()
