@@ -1,6 +1,7 @@
 from os.path import dirname, abspath
 import json
 import numpy as np
+from scipy.spatial.transform import Rotation
 import torch
 import warnings
 from pyrep import PyRep
@@ -14,19 +15,56 @@ from pyrep.errors import IKError
 import warnings
 
 DIR_PATH = dirname(abspath(__file__)) + '/../'
-SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_distractors_same_shape_many_colors_32.ttt'
+#SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_distractors_same_shape_many_colors_32.ttt'
+#SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_2cuboids_32camera.ttt'
+SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_distractors_same_shape_different_colors_32.ttt'
+#SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_distractors_same_shape_similar_colors_32.ttt'
+
+
+object_names_many = [
+    'blue_cuboid', 
+    'red_cuboid', 
+    'green_cuboid', 
+    'white_cuboid', 
+    'black_cuboid',
+    'yellow_cuboid',
+    'purple_cuboid',
+    'turquoise_cuboid',
+    ]
+
+object_names_single = [
+    'cuboid0',
+    ]
+
+object_names_different = [
+    'blue_cuboid', 
+    'red_cuboid', 
+    'green_cuboid', 
+    'white_cuboid', 
+    'black_cuboid'
+    ]
+
+object_names_similar_to_blue = [
+    'blue_cuboid', 
+    'purple_cuboid', 
+    'cyan_cuboid', 
+    'dark_blue_cuboid', 
+    'light_blue_cuboid'
+    ]
 
 
 def format_input(x):
     return torch.tensor(x, dtype=torch.float32)[None].permute(0, 3, 1, 2)
 
 
-def format_output(x):
-    return x.detach().numpy().flatten() / 10
+def format_output(x, max_speed_linear=0.1):
+    x_array = x.detach().numpy().flatten()
+    return x_array * max_speed_linear
 
-def set_controls(env, arm, action, ref, counter_error, init_quat):
+
+def set_controls(env, arm, action_velocity, ref, counter_error, init_quat):
     current_pos = arm.get_tip().get_position(relative_to=ref)
-    next_pos = current_pos + action * env.get_simulation_timestep()
+    next_pos = current_pos + action_velocity * env.get_simulation_timestep()
     next_quat = init_quat
     q = np.array(arm.get_joint_positions())
     try:
@@ -47,13 +85,12 @@ def reached_condition(arm, target_dummy, distance_tolerance):
 
 
 def test_model(model, env, camera, arm, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration, objects):
+    env.step()
     counter_error = 0
     counter_target_reached = 0
     init_quat = arm.get_tip().get_quaternion(relative_to=ref)
     for step in range(max_steps):
-        #print(f"step #{step}/{max_steps}", end=" ")
-        env.step() # images are caputred at the end of the last step() call
-        img_input = camera.capture_rgb()
+        img_input = camera.capture_rgb() # images are caputred at the end of the last step() call
         with torch.no_grad():
             x = format_input(img_input)
             y = model.forward(x)
@@ -65,29 +102,27 @@ def test_model(model, env, camera, arm, target_dummy, ref, max_steps, distance_t
             warnings.warn('10x IKError', Warning)
             break
 
+        env.step()
+
         if reached_condition(arm, target_dummy, distance_tolerance):
             counter_target_reached += 1
+        else:
+            counter_target_reached = 0
 
         if counter_target_reached >= maintain_target_duration:
             env.stop()
-            return True
-        """
-        x = input()
-        if x=='b':
-            break
-        if x=='q':
-            exit()
-        """
-    return False
+            return True, step+1
+
+    return False, max_steps
 
 
 def multiple_tests(n_tests, model, env, camera, arm, objects, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration):
     is_reached_list = []
+    n_steps_list = []
     obj_bounding_box = np.array([0.55, -0.25, 0.8, 0.8, 0.25, 0.8])
     obj_bounding_euler_angles = np.array([180, 0, 90, 180, 0, 270]) * np.pi/180
     obj_min = np.concatenate([obj_bounding_box[:3], obj_bounding_euler_angles[:3]]).reshape(1, 6)
     obj_max = np.concatenate([obj_bounding_box[3:], obj_bounding_euler_angles[3:]]).reshape(1, 6)
-    counter_reached = 0
     arm.set_control_loop_enabled(False)
     for i in range(n_tests):
         env.stop()
@@ -105,12 +140,14 @@ def multiple_tests(n_tests, model, env, camera, arm, objects, target_dummy, ref,
                         break
 
         env.start()
-        is_reached = test_model(model, env, camera, arm, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration, objects)
+        results = test_model(model, env, camera, arm, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration, objects)
         env.stop()
+        is_reached, n_steps = results
         is_reached_list.append(is_reached)
+        n_steps_list.append(n_steps)
         print(f'Test {i+1}/{n_tests} ; Total reached: {sum(is_reached_list)}/{len(is_reached_list)} ; running accuracy {sum(is_reached_list)/len(is_reached_list)}')
 
-    return is_reached_list
+    return is_reached_list, n_steps_list
 
 def format_color(color256):
     """Convert from [0-255] format to [0-1] format"""
@@ -118,19 +155,33 @@ def format_color(color256):
 
 
 def main():
-    model_name = "nn32_0000FF_aug_model"
+    #model_name = "nn32_no_aug_model_FF0000_ntraj_100"
+    model_name = "nn32_00FF00_no_aug_model"
     model_path = DIR_PATH + "data/" + model_name + ".pth"
-    n_tests = 5
+    n_tests = 100
     max_steps = 300
-    distance_tolerance = 0.05
+    distance_tolerance = 0.02
     maintain_target_duration = 10
 
-    a = np.array([0,0,1])
-    b = np.array([1,1,0])
-    range_col = np.round(np.arange(0.1, 1.01, 0.1) * 255)
-    aa = range_col.reshape((-1, 1)) * a.reshape((1, -1))
-    bb = range_col.reshape((-1, 1)) * b.reshape((1, -1)) + a*255
-    target_colors = np.array(np.concatenate([aa, bb])[:-1], dtype=np.uint8)
+    #b_indicator = np.array([0,0,1])
+    #rg_indicator = np.array([1,1,0])
+    #range_intensity = np.round(np.arange(0, 1.01, 0.1) * 255)
+    #colors1 = range_intensity[:].reshape((-1, 1)) * b_indicator.reshape((1, -1))
+    #colors2 = range_intensity[1:].reshape((-1, 1)) * rg_indicator.reshape((1, -1)) + b_indicator * 255
+    #target_colors = np.array(np.concatenate([colors1, colors2]), dtype=np.uint8)
+    target_colors = np.array([[0, 255, 0]])
+    #target_colors = np.array([[0, 0, 255], [5, 5, 250], [10, 10, 245], [15, 15, 240], [20, 20, 235], [25, 25, 230], [35, 35, 220], [50, 50, 205], [75, 75, 180], [100, 100, 155], [128, 128, 128]])
+
+    #r_indicator = np.array([1,0,0])
+    #range_intensity = np.round(np.arange(0.75, 1.01, 0.1) * 255)
+    #colors_red_shade = range_intensity.reshape((-1, 1)) * r_indicator.reshape((1, -1))
+    #target_colors = np.array(colors_red_shade[::-1], dtype=np.uint8)
+
+    #g_indicator = np.array([0,1,0])
+    #range_intensity = np.round(np.arange(0.3, 1.01, 0.1) * 255)
+    #colors_green_shade = range_intensity.reshape((-1, 1)) * g_indicator.reshape((1, -1))
+    #target_colors = np.array(colors_green_shade[::-1], dtype=np.uint8)
+
     random_seed = 456
 
     model = ConvNet(n_classes=3)
@@ -140,23 +191,20 @@ def main():
     model.eval()
     
     env = PyRep()
-    env.launch(SCENE_FILE, headless=True, responsive_ui=False)
+    env.launch(SCENE_FILE, headless=False, responsive_ui=False)
     arm = Panda()
     ref = arm.get_object('Reference')
     camera = VisionSensor('Panda_camera')
     target_dummy = Dummy('target_dummy')
-    object_names = [
-        'blue_cuboid', 
-        'red_cuboid', 
-        'green_cuboid', 
-        'white_cuboid', 
-        'black_cuboid',
-        'yellow_cuboid',
-        'purple_cuboid',
-        'turquoise_cuboid',
-        ]
+    
+
+
+    object_names = object_names_different
     objects = [Shape(obj) for obj in object_names]
+    objects[2].set_color(format_color([0, 0, 255]))
+
     sucess_results = []
+    steps_needed = []
 
     print('Generating initial random object poses...')
     #init_configs = get_scene_random_initial_positions(n_tests, len(objects))
@@ -165,21 +213,32 @@ def main():
     print(f'Otherwise, if this is not the case after {max_steps} time steps, the test fails.')
 
     for target_color in target_colors:
+        print("target color", target_color)
         np.random.seed(random_seed)
         env.stop()
         objects[0].set_color(format_color(target_color))
-        is_reached_list = multiple_tests(n_tests, model, env, camera, arm, objects, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration)
+        results_lists = multiple_tests(n_tests, model, env, camera, arm, objects, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration)
+        is_reached_list, n_steps_list = results_lists
         sucess_results.append(is_reached_list)
+        steps_needed.append(n_steps_list)
         print(f'All test done! Final accuracy:')
         print(sum(is_reached_list)/len(is_reached_list))
-    env.shutdown()
 
-    sucess_results = np.array(sucess_results)
-    results = {
-        "target_colors": target_colors,
-        "sucess_results": sucess_results,
-    }
-    np.savez_compressed(f"{DIR_PATH}data/test_many_distractors_{model_name}", **results)
+        all_sucess_results = np.array(sucess_results)
+        all_steps_needed = np.array(steps_needed)
+        results = {
+            "target_colors": target_colors,
+            "sucess_results": all_sucess_results,
+            "n_steps": all_steps_needed,
+            "scene_file": SCENE_FILE,
+        }
+        np.savez_compressed(f"{DIR_PATH}data/test_distractors_different_colors_{model_name}", **results)
+        print('saved for color:', target_color)
+
+    env.shutdown()
+    print('all done, all saved!')
+
+
 
 if __name__ == "__main__":
     main()

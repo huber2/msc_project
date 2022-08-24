@@ -18,7 +18,7 @@ SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_distractors_same_shape_different
 model_path = DIR_PATH + 'data/current_model.pth'
 n_tests = 100
 max_steps = 300
-distance_tolerance = 0.05
+distance_tolerance = 0.02
 angle_tolerance = 0.2
 maintain_target_duration = 10
 
@@ -36,8 +36,10 @@ def format_input(x):
     return torch.tensor(x, dtype=torch.float32)[None].permute(0, 3, 1, 2)
 
 
-def format_output(x):
-    return x.detach().numpy().flatten() / np.array([10, 10, 10, 100, 100, 100])
+def format_output(x, max_speed_linear=0.1, max_speed_angular=0.2):
+    lin_div = 1 / max_speed_linear
+    ang_div = 1 / max_speed_angular
+    return x.detach().numpy().flatten() / np.array([3*[lin_div] + 3*[ang_div]])
 
 
 env = PyRep()
@@ -65,7 +67,7 @@ object_names_b = [
     'light_blue_cuboid'
     ]
 
-object_names_chosen = object_names_a
+object_names_chosen = single_object_name
 
 objects = [Shape(obj) for obj in object_names_chosen]
 objects[0].set_color([0, 0, 1])
@@ -184,12 +186,16 @@ def get_test_acc(n_tests, model, env, camera, arm, objects, target_dummy, ref, m
     env.shutdown()
     return counter_reached / len(init_poses)
 
+def main():
+    print('Generating initial random object poses...')
+    #init_configs = get_scene_random_initial_positions(n_tests, len(objects))
+    print('Running tests...')
+    print(f'A tests passes if the robot tip reaches the target position witin {distance_tolerance}m and stays there for {maintain_target_duration} time steps.')
+    print(f'Otherwise, if this is not the case after {max_steps} time steps, the test fails.')
+    acc = get_test_acc(n_tests, model, env, camera, arm, objects, target_dummy, ref, max_steps, distance_tolerance, angle_tolerance, maintain_target_duration)
 
-print('Generating initial random object poses...')
-#init_configs = get_scene_random_initial_positions(n_tests, len(objects))
-print('Running tests...')
-print(f'A tests passes if the robot tip reaches the target position witin {distance_tolerance}m and stays there for {maintain_target_duration} time steps.')
-print(f'Otherwise, if this is not the case after {max_steps} time steps, the test fails.')
-acc = get_test_acc(n_tests, model, env, camera, arm, objects, target_dummy, ref, max_steps, distance_tolerance, angle_tolerance, maintain_target_duration)
+    print('All test done! Final accuracy:', acc)
 
-print('All test done! Final accuracy:', acc)
+
+if __name__ == '__main__':
+    main()

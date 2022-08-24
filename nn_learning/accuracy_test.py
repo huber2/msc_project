@@ -17,8 +17,8 @@ import warnings
 
 
 DIR_PATH = dirname(abspath(__file__)) + '/../'
-SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_distractors_same_shape_similar_colors.ttt'
-model_path = DIR_PATH + 'data/model_UNDERFIT_conv_very_simple_50ep__16x16_multicolor_mask5x5_v_xyz.pth'
+SCENE_FILE = DIR_PATH + 'coppelia_scenes/Franka_distractors_same_shape_different_colors_32.ttt'
+model_path = DIR_PATH + 'data/nn32_0000FF_aug_model.pth'
 n_tests = 100
 max_steps = 300
 distance_tolerance = 0.03
@@ -40,12 +40,12 @@ def format_input(x):
     return torch.tensor(x, dtype=torch.float32)[None].permute(0, 3, 1, 2)
 
 
-def format_output(x):
-    return x.detach().numpy().flatten() / 200
+def format_output(y):
+    return y.detach().numpy().flatten() / 200
 
 
 env = PyRep()
-env.launch(SCENE_FILE, headless=False, responsive_ui=True)
+env.launch(SCENE_FILE, headless=False, responsive_ui=False)
 arm = Panda()
 ref = arm.get_object('Reference')
 camera = VisionSensor('Panda_camera')
@@ -98,23 +98,24 @@ def set_controls(env, arm, action, ref, counter_error, init_quat):
     
 
 def test_model(model, env, camera, arm, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration):
+    env.step()
     init_quat = arm.get_tip().get_quaternion(relative_to=ref)
     counter_error = 0
     counter_target_reached = 0
     for step in range(max_steps):
-        #print(f"step #{step}/{max_steps}", end=" ")
-        img_input = camera.capture_rgb()
-        env.step() # Important to get the image
+        img_input = camera.capture_rgb() # The image is captured at the end of the last env.step() call
+        x = format_input(img_input)
         with torch.no_grad():
-            x = format_input(img_input)
             y = model.forward(x)
-            act_output = format_output(y)
+        act_output = format_output(y)
         counter_error = set_controls(env, arm, act_output, ref, counter_error, init_quat)
 
         if counter_error >= 10:
             env.stop()
             warnings.warn('10x IKError', Warning)
             break
+        
+        env.step()
 
         if arm.get_tip().check_distance(target_dummy) < distance_tolerance:
             counter_target_reached += 1
@@ -122,13 +123,7 @@ def test_model(model, env, camera, arm, target_dummy, ref, max_steps, distance_t
         if counter_target_reached >= maintain_target_duration:
             env.stop()
             return True
-        """
-        x = input()
-        if x=='b':
-            break
-        if x=='q':
-            exit()
-        """
+
     return False
 
 
@@ -137,7 +132,7 @@ def get_test_acc(n_tests, model, env, camera, arm, objects, target_dummy, ref, m
     obj_bounding_euler_angles = np.array([180, 0, -180, 180, 0, 180]) * np.pi/180
     obj_min = np.concatenate([obj_bounding_box[:3], obj_bounding_euler_angles[:3]]).reshape(1, 6)
     obj_max = np.concatenate([obj_bounding_box[3:], obj_bounding_euler_angles[3:]]).reshape(1, 6)
-    counter_reached = 0
+    list_is_reached = []
     arm.set_control_loop_enabled(False)
     for i in range(n_tests):
         env.stop()
@@ -156,12 +151,11 @@ def get_test_acc(n_tests, model, env, camera, arm, objects, target_dummy, ref, m
 
         env.start()
         is_reached = test_model(model, env, camera, arm, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration)
-        if is_reached:
-            counter_reached +=1
-        print(f'Test {i+1}/{n_tests} ; Total reached: {counter_reached}/{i+1} ; running accuracy {counter_reached/(i+1)}')
+        list_is_reached.append(is_reached)
+        print(f'Test {i+1}/{n_tests} ; Total reached: {sum(list_is_reached)}/{i+1} ; running accuracy {sum(list_is_reached)/(i+1)}')
     env.stop()
     env.shutdown()
-    return counter_reached / len(init_poses)
+    return list_is_reached
 
 
 print('Generating initial random object poses...')
@@ -169,6 +163,8 @@ print('Generating initial random object poses...')
 print('Running tests...')
 print(f'A tests passes if the robot tip reaches the target position witin {distance_tolerance}m and stays there for {maintain_target_duration} time steps.')
 print(f'Otherwise, if this is not the case after {max_steps} time steps, the test fails.')
-acc = get_test_acc(n_tests, model, env, camera, arm, objects, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration)
+list_is_reached = get_test_acc(n_tests, model, env, camera, arm, objects, target_dummy, ref, max_steps, distance_tolerance, maintain_target_duration)
 
-print('All test done! Final accuracy:', acc)
+print('All test done! Final accuracy:', sum(list_is_reached)/n_tests)
+print(list_is_reached)
+np.savez_compressed(DIR_PATH + 'data/nn32_0000FF_aug_model', list_is_reached)
