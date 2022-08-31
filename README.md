@@ -27,7 +27,7 @@ The `build_demo_data` directory contains the code to create the demonstration da
 - `create_datasets_ori.py` calls the `collect_demos_ori.py` to create demonstration trajectories **with orientation** taken into account.
 
 ### experiments
-The `experiments` directory contains the code to learn a control policy (modeled with a neural network) from the demonstrations and test:
+The `experiments` directory contains the code to learn a control policy (modeled with a neural network) from the demonstrations and test its peformance.
 
 ### results
 This is were we plot the results of the experiments
