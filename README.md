@@ -44,8 +44,8 @@ The `nn_learning` directory contains the code for the experiments: training neur
   - [accuracy_test_multiple_size_distractor.py ](./nn_learning/accuracy_test_multiple_size_distractor.py)
   - [accuracy_test_multiple_models_ORI.py ](./nn_learning/accuracy_test_multiple_models_ORI.py)
   - [automated_accuracy_test_color_1distractor.py](./nn_learning/automated_accuracy_test_color_1distractor.py)
-  - [accuracy_test_cone_distractor.py](./nn_learning/ accuracy_test_cone_distractor.py)
-  
+  - [accuracy_test_cone_distractor.py](./nn_learning/accuracy_test_cone_distractor.py)
+  - [accuracy_test_ori.py](./nn_learning/accuracy_test_ori.py)
   
 ### analysis
 This is were we plot the results of the experiments.
