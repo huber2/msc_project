@@ -32,6 +32,11 @@ The `build_demonstrations` directory contains the code to create the demonstrati
 
 The task for the robot consist in reaching either a red a green or a blue cuboid with the shortests path. The simulation scene used for the demonstrtions  can be found in the [`Franka_blue_cuboid_32camera.ttt`](./coppelia_scenes/Franka_blue_cuboid_32camera.ttt) file. The colour of the target is changed within the python code.
 
+A demonstration dataset is saved as a numpy arrays in a file in compressed .npz format with 3 keys:
+- 'demo_image_sequences' containing the state/image data.
+- 'demo_action_sequences' containing the action/velocities.
+- 'step_marker' The index between two consectuctive sequences trajectories (as trajectories may have different lengths).
+
 ### nn_learning
 The `nn_learning` directory contains the code for the experiments: training neural networks, applying data augmentation, testing the policy in CoppeliaSim.
 
