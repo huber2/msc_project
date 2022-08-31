@@ -48,7 +48,8 @@ The `nn_learning` directory contains the code for the experiments: training neur
   
   
 ### analysis
-This is were we plot the results of the experiments
+This is were we plot the results of the experiments.
+ - In the notebook [`draw_results.ipynb`](./analysis/results/draw_results.ipynb), we plot the figures of results used in the report.
 
 ### data
 Please see the OneDrive link. The `data`directory is empty because of storage limit. This is were we store the demonstration data, the pytorch models of the control policy and the raw data of the results.
